@@ -22,11 +22,37 @@ This is an exporter for Netfilter configuration and statistics.
 All counters are included by default. Rules need to have non-empty
 comments to show up.
 
-## Building
+## Running In Docker
+
+To build a Docker image:
 
 ```shell
+$ docker build -t prometheus-nftables-exporter .
+```
+
+And then
+
+```shell
+$ docker run --network host --cap-drop all --cap-add NET_ADMIN --cap-add NET_RAW --rm -it prometheus-nftables-exporter
+Listening for HTTP connections on "127.0.0.1:9732"...
+```
+
+## Running Directly
+
+To build it plain:
+
+```shell
+$ go test ./...
 $ go install ./cmd/promnftd
-$ setcap -q cap_net_admin+ep ./promnftd
+$ setcap -q cap_net_admin,cap_net_raw+ep ./promnftd
+```
+
+The `setcap` command is needed to be able to run the command as any
+user.
+
+```shell
+$ ./promnftd -http-addr localhost:9732
+Listening for HTTP connections on "127.0.0.1:9732"...
 ```
 
 ## Configuration
