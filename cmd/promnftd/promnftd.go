@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -34,6 +35,10 @@ func run(ctx context.Context) error {
 	}
 
 	var conn nftables.Conn
+	if _, err := conn.ListTables(); err != nil {
+		return fmt.Errorf("unable to access NF tables: %v", err)
+	}
+
 	l, s, cleanup, err := startCollectorServer(ctx, &conn, *ruleCommentFilter, *counterNameFilter, *httpAddr)
 	if err != nil {
 		return err
