@@ -5,8 +5,8 @@ RUN apk --no-cache add git libcap
 WORKDIR /go/src/app
 COPY ./ ./
 
-RUN go get ./...
-RUN go install ./cmd/promnftd
+RUN go mod download
+RUN go build ./cmd/promnftd
 RUN setcap -q cap_net_admin,cap_net_raw+ep promnftd
 
 

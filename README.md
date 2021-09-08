@@ -1,5 +1,7 @@
 # Prometheus Exporter for Linux Netfilter Tables
 
+[![tommie](https://circleci.com/gh/tommie/prometheus-nftables-exporter.svg?style=svg)](https://circleci.com/gh/tommie/prometheus-nftables-exporter)
+
 This is an exporter for Netfilter configuration and statistics.
 
 ## Metrics
