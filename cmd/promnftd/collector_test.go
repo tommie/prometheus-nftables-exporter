@@ -34,13 +34,30 @@ func TestNFTCollector(t *testing.T) {
 					UserData: makeRuleComment("test comment")},
 			},
 		},
+		sets: map[string][]*nftables.Set{
+			"table1": {
+				&nftables.Set{Name: "set1", IsMap: false, KeyType: nftables.SetDatatype{Name: "ipv4_addr"}},
+				&nftables.Set{Name: "map1", IsMap: true, KeyType: nftables.SetDatatype{Name: "ipv4_addr"}, DataType: nftables.SetDatatype{Name: "string"}},
+			},
+		},
+		setEls: map[string][]nftables.SetElement{
+			"set1": {
+				nftables.SetElement{},
+				nftables.SetElement{},
+			},
+		},
 	}
-	c := newNFTCollector(&conn, func(string) bool { return true }, func(string) bool { return true })
+	c := newNFTCollector(&conn, allFilter, allFilter, allFilter)
 	want := `
 # HELP nftables_chain_metadata Metadata about each chain. Value is always 1.
 # TYPE nftables_chain_metadata gauge
 nftables_chain_metadata{chain="chain1",family="inet",hook="prerouting",policy="accept",priority="0",table="table1"} 1
 nftables_chain_metadata{chain="chain2",family="inet",hook="input",policy="drop",priority="42",table="table1"} 1
+
+# HELP nftables_set_metadata Metadata about each set. Value is always 1.
+# TYPE nftables_set_metadata gauge
+nftables_set_metadata{datatype="",family="inet",ismap="0",keytype="ipv4_addr",set="set1",table="table1"} 1
+nftables_set_metadata{datatype="string",family="inet",ismap="1",keytype="ipv4_addr",set="map1",table="table1"} 1
 
 # HELP nftables_table_metadata Metadata about each table. Value is always 1.
 # TYPE nftables_table_metadata gauge
@@ -65,19 +82,28 @@ nftables_counter_byte_count{counter="counter1",family="inet",table="table1"} 471
 # HELP nftables_counter_packet_count Number of packets triggering the counter.
 # TYPE nftables_counter_packet_count counter
 nftables_counter_packet_count{counter="counter1",family="inet",table="table1"} 42
+
+# HELP nftables_set_size Number of elements in the set.
+# TYPE nftables_set_size gauge
+nftables_set_size{family="inet",set="map1",table="table1"} 0
+nftables_set_size{family="inet",set="set1",table="table1"} 2
 `
 
 	if err := testutil.CollectAndCompare(c, strings.NewReader(want),
 		"nftables_table_metadata",
 		"nftables_chain_metadata",
+		"nftables_set_metadata",
 		"nftables_chain_rule_count",
 		"nftables_rule_packet_count",
 		"nftables_rule_byte_count",
 		"nftables_counter_packet_count",
-		"nftables_counter_byte_count"); err != nil {
+		"nftables_counter_byte_count",
+		"nftables_set_size"); err != nil {
 		t.Errorf("CollectAndCompare: %v", err)
 	}
 }
+
+func allFilter(string) bool { return true }
 
 func TestNFTCollectorRuleCommentFilter(t *testing.T) {
 	conn := fakeNFTConn{
@@ -95,7 +121,7 @@ func TestNFTCollectorRuleCommentFilter(t *testing.T) {
 			},
 		},
 	}
-	c := newNFTCollector(&conn, func(s string) bool { return s == "match" }, func(string) bool { return true })
+	c := newNFTCollector(&conn, func(s string) bool { return s == "match" }, allFilter, allFilter)
 	want := `
 # HELP nftables_rule_byte_count Number of bytes matching the rule.
 # TYPE nftables_rule_byte_count counter
@@ -122,7 +148,7 @@ func TestNFTCollectorCounterNameFilter(t *testing.T) {
 			},
 		},
 	}
-	c := newNFTCollector(&conn, func(string) bool { return true }, func(s string) bool { return s == "match" })
+	c := newNFTCollector(&conn, allFilter, func(s string) bool { return s == "match" }, allFilter)
 	want := `
 # HELP nftables_counter_byte_count Number of bytes triggering the counter.
 # TYPE nftables_counter_byte_count counter
@@ -137,13 +163,42 @@ nftables_counter_packet_count{counter="match",family="inet",table="table1"} 42
 	}
 }
 
+func TestNFTCollectorSetNameFilter(t *testing.T) {
+	conn := fakeNFTConn{
+		tables: []*nftables.Table{
+			{Name: "table1", Family: nftables.TableFamilyINet},
+		},
+		sets: map[string][]*nftables.Set{
+			"table1": {
+				&nftables.Set{Name: "nomatch", IsMap: false, KeyType: nftables.SetDatatype{Name: "ipv4_addr"}},
+				&nftables.Set{Name: "match", IsMap: true, KeyType: nftables.SetDatatype{Name: "ipv4_addr"}, DataType: nftables.SetDatatype{Name: "string"}},
+			},
+		},
+	}
+	c := newNFTCollector(&conn, allFilter, allFilter, func(s string) bool { return s == "match" })
+	want := `
+# HELP nftables_set_metadata Metadata about each set. Value is always 1.
+# TYPE nftables_set_metadata gauge
+nftables_set_metadata{datatype="string",family="inet",ismap="1",keytype="ipv4_addr",set="match",table="table1"} 1
+# HELP nftables_set_size Number of elements in the set.
+# TYPE nftables_set_size gauge
+nftables_set_size{family="inet",set="match",table="table1"} 0
+`
+
+	if err := testutil.CollectAndCompare(c, strings.NewReader(want), "nftables_set_metadata", "nftables_set_size"); err != nil {
+		t.Errorf("CollectAndCompare: %v", err)
+	}
+}
+
 var _ nftConn = &nftables.Conn{}
 
 type fakeNFTConn struct {
 	tables []*nftables.Table
 	chains []*nftables.Chain
-	objs   map[string][]nftables.Obj   // Key is "table".
-	rules  map[string][]*nftables.Rule // Key is "table/chain".
+	objs   map[string][]nftables.Obj        // Key is "table".
+	rules  map[string][]*nftables.Rule      // Key is "table/chain".
+	sets   map[string][]*nftables.Set       // Key is "table".
+	setEls map[string][]nftables.SetElement // Key is "set".
 }
 
 func (c *fakeNFTConn) ListTables() ([]*nftables.Table, error) {
@@ -160,4 +215,12 @@ func (c *fakeNFTConn) GetObjects(t *nftables.Table) ([]nftables.Obj, error) {
 
 func (c *fakeNFTConn) GetRule(t *nftables.Table, cn *nftables.Chain) ([]*nftables.Rule, error) {
 	return c.rules[t.Name+"/"+cn.Name], nil
+}
+
+func (c *fakeNFTConn) GetSets(t *nftables.Table) ([]*nftables.Set, error) {
+	return c.sets[t.Name], nil
+}
+
+func (c *fakeNFTConn) GetSetElements(st *nftables.Set) ([]nftables.SetElement, error) {
+	return c.setEls[st.Name], nil
 }

@@ -18,7 +18,7 @@ import (
 // startCollectorServer reads global flags and starts the HTTP
 // server. Callers should run the returned cleanup function once the
 // server is stopped.
-func startCollectorServer(ctx context.Context, conn nftConn, ruleCommentFilter, counterNameFilter, httpAddr string) (net.Listener, *http.Server, func(), error) {
+func startCollectorServer(ctx context.Context, conn nftConn, ruleCommentFilter, counterNameFilter, setNameFilter, httpAddr string) (net.Listener, *http.Server, func(), error) {
 	rcre, err := regexp.Compile("^(" + ruleCommentFilter + ")$")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("invalid -rule-comments: %v", err)
@@ -27,8 +27,12 @@ func startCollectorServer(ctx context.Context, conn nftConn, ruleCommentFilter, 
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("invalid -counter-names: %v", err)
 	}
+	stre, err := regexp.Compile("^(" + setNameFilter + ")$")
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("invalid -set-names: %v", err)
+	}
 
-	nftColl := newNFTCollector(conn, rcre.MatchString, cnre.MatchString)
+	nftColl := newNFTCollector(conn, rcre.MatchString, cnre.MatchString, stre.MatchString)
 	if err := prometheus.Register(nftColl); err != nil {
 		return nil, nil, nil, err
 	}

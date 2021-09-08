@@ -19,7 +19,7 @@ func TestStartCollectorServer(t *testing.T) {
 		tables: []*nftables.Table{
 			{Name: "table1", Family: nftables.TableFamilyINet},
 		},
-	}, ".*", ".*", "localhost:0")
+	}, ".*", ".*", ".*", "localhost:0")
 	if err != nil {
 		t.Fatalf("startCollectorServer failed: %v", err)
 	}

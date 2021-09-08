@@ -11,13 +11,12 @@ RUN setcap cap_net_admin,cap_net_raw+ep promnftd
 
 FROM alpine:latest
 
-RUN apk --no-cache add libc6-compat
+RUN apk --no-cache add libc6-compat libcap
 
 COPY --from=go_builder /go/src/app/promnftd /usr/local/bin/
 
 # https://github.com/moby/moby/issues/35699
-RUN apk --no-cache add libcap && \
-    setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/promnftd && \
+RUN setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/promnftd && \
     apk --no-cache del libcap
 
 # Port 9732 is what https://github.com/Intrinsec/nftables_exporter/blob/master/Dockerfile uses.

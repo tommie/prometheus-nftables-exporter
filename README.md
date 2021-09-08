@@ -8,6 +8,8 @@ This is an exporter for Netfilter configuration and statistics.
 
 * `nftables_chain_metadata{family, table, chain, hook, policy, priority}`
   Metadata about each chain. Value is always 1. (Gauge)
+* `nftables_set_metadata{family, table, set, ismap, keytype, datatype}`
+  Metadata about each set. Value is always 1. (Gauge)
 * `nftables_table_metadata{family, table, flags}`
   Metadata about each table. Value is always 1. (Gauge)
 * `nftables_chain_rule_count{family. table, chain}}`
@@ -20,9 +22,11 @@ This is an exporter for Netfilter configuration and statistics.
   Number of bytes triggering the counter. (Ccumulative)
 * `nftables_counter_packet_count{family, table, counter}`
   Number of packets triggering the counter. (Cumulative)
+* `nftables_set_size{family, table, set}`
+  Number of elements in the set. (Gauge)
 
-All counters are included by default. Rules need to have non-empty
-comments to show up.
+All counters and sets are included by default. Rules need to have
+non-empty comments to show up.
 
 ## Running In Docker
 
@@ -68,6 +72,8 @@ Controlling what's exported:
   Regular expression of names of counters to include (fully anchored). (default ".*")
 * `-rule-comments string`
   Regular expression of comments of rules to include (fully anchored). (default ".*")
+* `-set-names string`
+  Regular expression of names of sets to include (fully anchored).
 
 Controlling how the exporter runs:
 

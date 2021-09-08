@@ -13,10 +13,12 @@ import (
 )
 
 var (
-	httpAddr          = flag.String("http-addr", "localhost:0", "TCP-address to listen for HTTP connections on.")
 	ruleCommentFilter = flag.String("rule-comments", ".*", "Regular expression of comments of rules to include (fully anchored).")
 	counterNameFilter = flag.String("counter-names", ".*", "Regular expression of names of counters to include (fully anchored).")
-	standaloneStderr  = flag.Bool("standalone-log", false, "Log to stderr, with time prefix.")
+	setNameFilter     = flag.String("set-names", ".*", "Regular expression of names of sets to include (fully anchored).")
+
+	httpAddr         = flag.String("http-addr", "localhost:0", "TCP-address to listen for HTTP connections on.")
+	standaloneStderr = flag.Bool("standalone-log", false, "Log to stderr, with time prefix.")
 )
 
 func main() {
@@ -39,7 +41,7 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("unable to access NF tables: %v", err)
 	}
 
-	l, s, cleanup, err := startCollectorServer(ctx, &conn, *ruleCommentFilter, *counterNameFilter, *httpAddr)
+	l, s, cleanup, err := startCollectorServer(ctx, &conn, *ruleCommentFilter, *counterNameFilter, *setNameFilter, *httpAddr)
 	if err != nil {
 		return err
 	}

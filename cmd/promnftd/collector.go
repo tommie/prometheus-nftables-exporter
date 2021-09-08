@@ -27,6 +27,12 @@ var (
 		Name:      "ineligible_counters",
 		Help:      "Number of counters that were not exported for some reason.",
 	}, []string{"family", "table", "reason"})
+
+	ineligibleSets = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "nftables",
+		Name:      "ineligible_sets",
+		Help:      "Number of sets that were not exported for some reason.",
+	}, []string{"family", "table", "reason"})
 )
 
 func init() {
@@ -40,11 +46,13 @@ type nftCollector struct {
 	conn              nftConn
 	ruleCommentFilter func(string) bool
 	counterNameFilter func(string) bool
+	setNameFilter     func(string) bool
 
 	// Metadata
 
 	tableDesc *prometheus.Desc
 	chainDesc *prometheus.Desc
+	setDesc   *prometheus.Desc
 
 	// Statistics
 
@@ -53,6 +61,7 @@ type nftCollector struct {
 	ruleByteCounterDesc   *prometheus.Desc
 	packetCounterDesc     *prometheus.Desc
 	byteCounterDesc       *prometheus.Desc
+	setSizeDesc           *prometheus.Desc
 }
 
 // nftConn is implemented by *nftables.Conn.
@@ -61,24 +70,29 @@ type nftConn interface {
 	ListChains() ([]*nftables.Chain, error)
 	GetObjects(*nftables.Table) ([]nftables.Obj, error)
 	GetRule(*nftables.Table, *nftables.Chain) ([]*nftables.Rule, error)
+	GetSets(*nftables.Table) ([]*nftables.Set, error)
+	GetSetElements(*nftables.Set) ([]nftables.SetElement, error)
 }
 
 // newNFTCollector creates a new collector. Objects are exported if
 // the filter returns true.
-func newNFTCollector(conn nftConn, ruleCommentFilter, counterNameFilter func(string) bool) *nftCollector {
+func newNFTCollector(conn nftConn, ruleCommentFilter, counterNameFilter, setNameFilter func(string) bool) *nftCollector {
 	return &nftCollector{
 		conn:              conn,
 		ruleCommentFilter: ruleCommentFilter,
 		counterNameFilter: counterNameFilter,
+		setNameFilter:     setNameFilter,
 
 		tableDesc: prometheus.NewDesc("nftables_table_metadata", "Metadata about each table. Value is always 1.", []string{"family", "table" /* values: */, "flags"}, nil),
 		chainDesc: prometheus.NewDesc("nftables_chain_metadata", "Metadata about each chain. Value is always 1.", []string{"family", "table", "chain" /* values: */, "hook", "policy", "priority"}, nil),
+		setDesc:   prometheus.NewDesc("nftables_set_metadata", "Metadata about each set. Value is always 1.", []string{"family", "table", "set" /* values: */, "ismap", "keytype", "datatype"}, nil),
 
 		chainRuleCountDesc:    prometheus.NewDesc("nftables_chain_rule_count", "Total rule count in chain.", []string{"family", "table", "chain"}, nil),
 		rulePacketCounterDesc: prometheus.NewDesc("nftables_rule_packet_count", "Number of packets matching the rule.", []string{"family", "table", "chain", "comment"}, nil),
 		ruleByteCounterDesc:   prometheus.NewDesc("nftables_rule_byte_count", "Number of bytes matching the rule.", []string{"family", "table", "chain", "comment"}, nil),
 		packetCounterDesc:     prometheus.NewDesc("nftables_counter_packet_count", "Number of packets triggering the counter.", []string{"family", "table", "counter"}, nil),
 		byteCounterDesc:       prometheus.NewDesc("nftables_counter_byte_count", "Number of bytes triggering the counter.", []string{"family", "table", "counter"}, nil),
+		setSizeDesc:           prometheus.NewDesc("nftables_set_size", "Number of elements in the set.", []string{"family", "table", "set"}, nil),
 	}
 }
 
@@ -86,11 +100,13 @@ func newNFTCollector(conn nftConn, ruleCommentFilter, counterNameFilter func(str
 func (c *nftCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.tableDesc
 	ch <- c.chainDesc
+	ch <- c.setDesc
 	ch <- c.chainRuleCountDesc
 	ch <- c.rulePacketCounterDesc
 	ch <- c.ruleByteCounterDesc
 	ch <- c.packetCounterDesc
 	ch <- c.byteCounterDesc
+	ch <- c.setSizeDesc
 }
 
 // Collector implements prometheus.Collector.
@@ -147,6 +163,19 @@ func (c *nftCollector) collectTable(ch chan<- prometheus.Metric, t *nftables.Tab
 		}
 	}
 
+	sts, err := c.conn.GetSets(t)
+	if err != nil {
+		collectionFailures.Inc()
+		return fmt.Errorf("listing sets for table %q: %v", t.Name, err)
+	}
+
+	for _, st := range sts {
+		if err := c.collectSet(ch, fam, t, st); err != nil {
+			log.Printf("%v (ignored)", err)
+			collectionFailures.Inc()
+		}
+	}
+
 	return nil
 }
 
@@ -196,6 +225,30 @@ func (c *nftCollector) collectRule(ch chan<- prometheus.Metric, family string, r
 
 	ch <- prometheus.MustNewConstMetric(c.rulePacketCounterDesc, prometheus.CounterValue, float64(cnt.Packets), family, r.Table.Name, r.Chain.Name, cmnt)
 	ch <- prometheus.MustNewConstMetric(c.ruleByteCounterDesc, prometheus.CounterValue, float64(cnt.Bytes), family, r.Table.Name, r.Chain.Name, cmnt)
+
+	return nil
+}
+
+// collectSet exports metrics about a single set/map.
+func (c *nftCollector) collectSet(ch chan<- prometheus.Metric, family string, t *nftables.Table, st *nftables.Set) error {
+	if !c.setNameFilter(st.Name) {
+		ineligibleSets.WithLabelValues(family, t.Name, "name-filter").Inc()
+		return nil
+	}
+
+	isMap := "0"
+	if st.IsMap {
+		isMap = "1"
+	}
+	ch <- prometheus.MustNewConstMetric(c.setDesc, prometheus.GaugeValue, 1, family, t.Name, st.Name, isMap, st.KeyType.Name, st.DataType.Name)
+
+	els, err := c.conn.GetSetElements(st)
+	if err != nil {
+		ineligibleSets.WithLabelValues(family, t.Name, "elements-error").Inc()
+		return fmt.Errorf("getting elements for set %s/%s/%s: %v", family, t.Name, st.Name, err)
+	}
+
+	ch <- prometheus.MustNewConstMetric(c.setSizeDesc, prometheus.GaugeValue, float64(len(els)), family, t.Name, st.Name)
 
 	return nil
 }
