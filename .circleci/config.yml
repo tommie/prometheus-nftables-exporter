@@ -61,7 +61,3 @@ jobs:
           key: v1-{{ .Branch }}-{{ epoch }}
           paths:
             - /caches/app.tar
-      - run:
-          name: Check that promnftd is executable
-          command: |
-            docker run --rm app -help
