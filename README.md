@@ -89,6 +89,9 @@ have to decide. It's normally something 9100--9400.
 
 ## Implementation Notes and Caveats
 
+* The `ismap` and `keytype` labels for sets will be wrong until
+  [google/nftables#129](https://github.com/google/nftables/pull/129)
+  is merged.
 * Implemented in Go.
 * Uses the `google/nftables` library.
 * Designed to run as non-root in a Docker container with network mode
