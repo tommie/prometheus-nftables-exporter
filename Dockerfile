@@ -1,11 +1,13 @@
-FROM golang:alpine AS go_builder
+ARG golang_ver=1.18
+FROM golang:$golang_ver-alpine AS go_builder
 
 RUN apk --no-cache add git libcap
 
 WORKDIR /go/src/app
-COPY ./ ./
-
+COPY go.mod go.sum ./
 RUN go mod download
+
+COPY ./ ./
 RUN go build ./cmd/promnftd
 RUN setcap cap_net_admin,cap_net_raw+ep promnftd
 

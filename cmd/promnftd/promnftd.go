@@ -31,9 +31,11 @@ func main() {
 
 // run starts everything and waits for a signal to terminate.
 func run(ctx context.Context) error {
+	ll := log.New(os.Stderr, "", log.LstdFlags)
 	if !*standaloneStderr {
 		log.SetFlags(0)
 		log.SetOutput(os.Stdout)
+		ll = log.New(os.Stdout, "", 0)
 	}
 
 	var conn nftables.Conn
@@ -41,7 +43,7 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("unable to access NF tables: %v", err)
 	}
 
-	l, s, cleanup, err := startCollectorServer(ctx, &conn, *ruleCommentFilter, *counterNameFilter, *setNameFilter, *httpAddr)
+	l, s, cleanup, err := startCollectorServer(ctx, &conn, *ruleCommentFilter, *counterNameFilter, *setNameFilter, *httpAddr, ll)
 	if err != nil {
 		return err
 	}

@@ -18,7 +18,7 @@ import (
 // startCollectorServer reads global flags and starts the HTTP
 // server. Callers should run the returned cleanup function once the
 // server is stopped.
-func startCollectorServer(ctx context.Context, conn nftConn, ruleCommentFilter, counterNameFilter, setNameFilter, httpAddr string) (net.Listener, *http.Server, func(), error) {
+func startCollectorServer(ctx context.Context, conn nftConn, ruleCommentFilter, counterNameFilter, setNameFilter, httpAddr string, log *log.Logger) (net.Listener, *http.Server, func(), error) {
 	rcre, err := regexp.Compile("^(" + ruleCommentFilter + ")$")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("invalid -rule-comments: %v", err)
@@ -37,7 +37,9 @@ func startCollectorServer(ctx context.Context, conn nftConn, ruleCommentFilter, 
 		return nil, nil, nil, err
 	}
 
-	http.Handle("/metrics", promhttp.Handler())
+	http.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+		ErrorLog: log,
+	}))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/metrics", http.StatusFound)
 	})

@@ -191,18 +191,27 @@ func (c *nftCollector) collectChain(ch chan<- prometheus.Metric, cn *nftables.Ch
 	fam := tableFamilyString(cn.Table.Family)
 	ch <- prometheus.MustNewConstMetric(c.chainRuleCountDesc, prometheus.GaugeValue, float64(len(rs)), fam, cn.Table.Name, cn.Name)
 
+	pktMap := map[string]uint64{}
+	byteMap := map[string]uint64{}
 	for _, r := range rs {
-		if err := c.collectRule(ch, fam, r); err != nil {
+		if err := c.collectRule(pktMap, byteMap, fam, r); err != nil {
 			log.Printf("%v (ignored)", err)
 			collectionFailures.Inc()
 		}
+	}
+
+	for name, v := range pktMap {
+		ch <- prometheus.MustNewConstMetric(c.rulePacketCounterDesc, prometheus.CounterValue, float64(v), fam, cn.Table.Name, cn.Name, name)
+	}
+	for name, v := range byteMap {
+		ch <- prometheus.MustNewConstMetric(c.ruleByteCounterDesc, prometheus.CounterValue, float64(v), fam, cn.Table.Name, cn.Name, name)
 	}
 
 	return nil
 }
 
 // collectRule exports metrics about a single rule.
-func (c *nftCollector) collectRule(ch chan<- prometheus.Metric, family string, r *nftables.Rule) error {
+func (c *nftCollector) collectRule(pktMap, byteMap map[string]uint64, family string, r *nftables.Rule) error {
 	cmnt, err := ruleComment(r)
 	if err != nil {
 		ineligibleRules.WithLabelValues(family, r.Table.Name, "comment-error").Inc()
@@ -223,8 +232,8 @@ func (c *nftCollector) collectRule(ch chan<- prometheus.Metric, family string, r
 		return nil
 	}
 
-	ch <- prometheus.MustNewConstMetric(c.rulePacketCounterDesc, prometheus.CounterValue, float64(cnt.Packets), family, r.Table.Name, r.Chain.Name, cmnt)
-	ch <- prometheus.MustNewConstMetric(c.ruleByteCounterDesc, prometheus.CounterValue, float64(cnt.Bytes), family, r.Table.Name, r.Chain.Name, cmnt)
+	pktMap[cmnt] += cnt.Packets
+	byteMap[cmnt] += cnt.Bytes
 
 	return nil
 }
